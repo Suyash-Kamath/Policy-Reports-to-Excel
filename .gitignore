@@ -1,0 +1,61 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+*.sqlite3
+*.db
+.env
+.env.*
+.venv/
+venv/
+ENV/
+env/
+
+# =========================
+# FastAPI / Uvicorn
+# =========================
+*.pid
+*.coverage
+coverage.xml
+htmlcov/
+.cache/
+.mypy_cache/
+.pytest_cache/
+.dmypy.json
+.pyre/
+
+# =========================
+# Frontend (HTML/CSS/JS)
+# =========================
+# No build tools, but ignore cache and temp files
+*.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Node/Vercel (if deploying frontend there)
+# =========================
+.vercel/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.tmp
+*.orig

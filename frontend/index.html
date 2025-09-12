@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Data Converter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Policy Data to Excel Converter</h1>
+    <div class="form-container">
+        <label for="company-name">Company Name</label>
+        <input type="text" id="company-name" value="ICICI" placeholder="Enter company name (e.g., ICICI)">
+        
+        <label for="file-upload">Upload File (Text, CSV, Excel, or Image)</label>
+        <input type="file" id="file-upload" accept=".txt,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.bmp,.tiff">
+        
+        <button id="process-btn" onclick="processFile()">Process File</button>
+    </div>
+
+    <div id="status"></div>
+    <div id="extracted-text" style="display: none;"><strong>Extracted Text:</strong></div>
+    <div id="parsed-data" style="display: none;"><strong>Parsed Data:</strong></div>
+    <a id="download-link" style="display: none;"></a>
+
+    <!-- Load script after DOM -->
+    <script src="script.js" defer></script>
+</body>
+</html>
