@@ -143,6 +143,7 @@ async def process_file(file: UploadFile = File(...), company_name: str = Form("U
         - Segment: The segment name (e.g., GCV 7.5 ton-12 ton, PCV 3Wheeler Electric). If not specified, infer or use 'Unknown'.
         - Location: The location/RTO state/district (e.g., West Bengal, Assam). If multiple per row, use the primary one.
         - Policy Type: The policy type (e.g., Comprehensive, Third Party, All).
+          • If missing, set Policy Type to 'Comp/TP' by default.
           • If the value is 'Comp/TP' or 'Comp.+TP' alone, do not include it as a single policy type; instead add "Includes Comp/TP policies" to the Remarks field.
           • If 'AOTP' is present under 'Type Comp/TP', set Policy Type to 'AOTP'. Do not add 'Comp/TP' to Remarks unless additional context requires it.
         - Payout: The payout/PO value should be in percentage. If already in percentage, keep as is.
