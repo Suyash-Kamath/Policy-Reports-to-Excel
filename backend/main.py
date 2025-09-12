@@ -150,6 +150,8 @@ async def process_file(file: UploadFile = File(...), company_name: str = Form("U
         - Doable District: The doable district name(s). If mentioned and not "All", prefix with "Applicable for " and list district names (comma-separated if multiple). If "All" or not mentioned, use 'All'.
         - Remarks: Only applicable conditions. Do not include exclusions unless part of applicability. If blank, use ''.
           Also, include any additional fields not mapped to the above in Remarks, prefixed with "Additional: <field>: <value>".
+          Also, include:
+    • Any additional fields not explicitly mentioned above should be added to Remarks, prefixed with "Additional: <field>: <value>".
 
         Ignore irrelevant details like dates (e.g., W.E.F.), transaction type (New/Old), age (All), unless they affect Remarks or districts.
         For tables, extract each row as a separate record, pairing fields correctly.
