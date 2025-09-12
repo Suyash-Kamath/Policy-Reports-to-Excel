@@ -27,7 +27,7 @@ async function processFile() {
     formData.append('company_name', companyName);
 
     try {
-        const response = await fetch('http://127.0.0.1:8000/process-file/', { // use backend URL in dev
+        const response = await fetch('https://policy-reports-to-excel.onrender.com/process-file/', { // use backend URL in dev
             method: 'POST',
             body: formData
         });
