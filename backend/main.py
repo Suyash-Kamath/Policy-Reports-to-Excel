@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501", "http://127.0.0.1:5500", "https://report-to-excel.vercel.app/"],
+    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501", "http://127.0.0.1:5500", "https://report-to-excel.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
