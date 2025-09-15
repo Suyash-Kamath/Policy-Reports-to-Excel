@@ -389,11 +389,15 @@ async def process_file(
         Task:
         For each policy record:
         1. Match the correct formula rule by comparing Segment, Location, Policy Type, and Doable District.
-        2. Extract the formula percentage from the formula rules.
-        3. Calculate: Calculated Payout = Payin - Formula%.
-        4. Always keep 'Payin' unchanged.
-        5. Ensure both 'Payin' and 'Calculated Payout' are in percentage format (e.g., 45%, 12.5%).
-        6. Also include a field 'Formula Used' showing the matched formula condition.
+        2. Interpret ranges strictly as:
+           - "Payin Below X%" → Payin ≤ X
+           - "Payin X to Y%" → X ≤ Payin ≤ Y (inclusive of both X and Y)
+           - "Payin Above X%" → Payin ≥ X+1
+        3. Extract the formula percentage from the formula rules.
+        4. Calculate: Calculated Payout = Payin - Formula%.
+        5. Always keep 'Payin' unchanged.
+        6. Ensure both 'Payin' and 'Calculated Payout' are in percentage format (e.g., 45%, 12.5%).
+        7. Also include a field 'Formula Used' showing the matched formula condition.
 
         Return only a JSON array with all original fields plus 'Calculated Payout' and 'Formula Used'.
         """
