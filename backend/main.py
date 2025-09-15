@@ -390,15 +390,19 @@ async def process_file(
         For each policy record:
         1. Match the correct formula rule by comparing Segment, Location, Policy Type, and Doable District.
         2. Interpret ranges strictly as:
-           - "Payin Below X%" → Payin ≤ X
-           - "Payin X to Y%" → X ≤ Payin ≤ Y (inclusive of both X and Y)
-           - "Payin Above X%" → Payin ≥ X+1
-        3. Extract the formula percentage from the formula rules.
-        4. Calculate: Calculated Payout = Payin - Formula%.
-        5. Always keep 'Payin' unchanged.
-        6. Ensure both 'Payin' and 'Calculated Payout' are in percentage format (e.g., 45%, 12.5%).
-        7. Also include a field 'Formula Used' showing the matched formula condition.
-
+           - "Payin Below 20%" → Payin <= 20%
+           - "Payin 21% to 30%" → 21% <= Payin <= 30%
+           - "Payin 31% to 50%" → 31% <= Payin <= 50%
+           - "Payin from 51%" onwards
+        3. When Payin is 20%, classify as "Below 20%".
+        4. When Payin is 30%, classify as "21% to 30%".
+        5. When Payin is 50%, classify as "31% to 50%".
+       
+        6. Extract the formula percentage from the formula rules.
+        7. Calculate: Calculated Payout = Payin - Formula%.
+        8. Always keep 'Payin' unchanged.
+        9. Ensure both 'Payin' and 'Calculated Payout' are in percentage format (e.g., 45%, 12.5%).
+        10. Also include a field 'Formula Used' showing the matched formula condition.
         Return only a JSON array with all original fields plus 'Calculated Payout' and 'Formula Used'.
         """
         formula_response = client.chat.completions.create(
