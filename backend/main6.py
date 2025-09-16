@@ -9,6 +9,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import re
+import math
 
 # Check if required packages are available
 try:
@@ -67,7 +68,6 @@ def extract_text_from_pdf_file(pdf_bytes: bytes) -> str:
     """Extract text from PDF using multiple methods"""
     extracted_text = ""
     
-    # Method 1: Try pdfplumber first (most accurate)
     if pdfplumber:
         try:
             with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
@@ -81,7 +81,6 @@ def extract_text_from_pdf_file(pdf_bytes: bytes) -> str:
         except Exception as e:
             logger.warning(f"pdfplumber extraction failed: {str(e)}")
     
-    # Method 2: Try PyPDF2 as fallback
     if PyPDF2:
         try:
             pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_bytes))
@@ -95,17 +94,14 @@ def extract_text_from_pdf_file(pdf_bytes: bytes) -> str:
         except Exception as e:
             logger.warning(f"PyPDF2 extraction failed: {str(e)}")
     
-    # Method 3: Return empty string if all methods fail
     logger.warning("All PDF text extraction methods failed")
     return ""
 
 
-# 📹 Helper function: extract text/formulas from files
 async def extract_text_from_file(file: UploadFile, is_formula: bool = False) -> str:
     file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
     file_type = file.content_type if file.content_type else file_extension
 
-    # Image-based extraction with enhanced OCR
     image_extensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff']
     if file_extension in image_extensions or file_type.startswith('image/'):
         image_bytes = await file.read()
@@ -144,19 +140,15 @@ async def extract_text_from_file(file: UploadFile, is_formula: bool = False) -> 
         )
         return response.choices[0].message.content.strip()
 
-    # Enhanced PDF extraction
     if file_extension == 'pdf':
         pdf_bytes = await file.read()
         
-        # First try to extract text directly from PDF
         pdf_text = extract_text_from_pdf_file(pdf_bytes)
         
         if pdf_text and len(pdf_text.strip()) > 50:
-            # If we got good text extraction, use it
             logger.info("Using direct PDF text extraction")
             return pdf_text
         else:
-            # Fallback to OpenAI vision for PDF
             logger.info("Using OpenAI vision for PDF")
             pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
             
@@ -180,16 +172,13 @@ async def extract_text_from_file(file: UploadFile, is_formula: bool = False) -> 
             )
             return response.choices[0].message.content.strip()
 
-    # Text files
     if file_extension == 'txt':
         return (await file.read()).decode('utf-8', errors='ignore')
 
-    # CSV files
     if file_extension == 'csv':
         df = pd.read_csv(BytesIO(await file.read()), encoding='utf-8', errors='ignore')
         return df.to_string()
 
-    # Excel files
     if file_extension in ['xlsx', 'xls']:
         file_bytes = await file.read()
         all_sheets = pd.read_excel(BytesIO(file_bytes), sheet_name=None)
@@ -204,12 +193,9 @@ async def extract_text_from_file(file: UploadFile, is_formula: bool = False) -> 
 
 
 def clean_json_response(response_text: str) -> str:
-    """Clean and extract JSON from OpenAI response"""
-    # Remove markdown code blocks
     cleaned = re.sub(r'```json\s*', '', response_text)
     cleaned = re.sub(r'```\s*$', '', cleaned)
     
-    # Remove any text before the first [ or {
     json_start = -1
     for i, char in enumerate(cleaned):
         if char in '[{':
@@ -219,7 +205,6 @@ def clean_json_response(response_text: str) -> str:
     if json_start != -1:
         cleaned = cleaned[json_start:]
     
-    # Remove any text after the last ] or }
     json_end = -1
     for i in range(len(cleaned) - 1, -1, -1):
         if cleaned[i] in ']}':
@@ -233,22 +218,16 @@ def clean_json_response(response_text: str) -> str:
 
 
 def ensure_list_format(data) -> list:
-    """Ensure data is in list format"""
     if isinstance(data, list):
         return data
     elif isinstance(data, dict):
-        return [data]  # Convert single object to list
+        return [data]
     else:
         raise ValueError(f"Expected list or dict, got {type(data)}")
 
 
-# ---- Helper: classify Payin ----
 def classify_payin(payin_str):
-    """
-    Converts Payin string (e.g., '50%') to float and classifies its range.
-    """
     try:
-        # Handle various formats
         payin_clean = str(payin_str).replace('%', '').replace(' ', '')
         payin_value = float(payin_clean)
         
@@ -266,6 +245,39 @@ def classify_payin(payin_str):
         return 0.0, "Payin Below 20%"
 
 
+def validate_calculated_payout(record):
+    """Validate and correct Calculated Payout based on Formula Used"""
+    payin_value = record.get('Payin_Value', 0.0)
+    formula_used = record.get('Formula Used', '')
+    
+    try:
+        if formula_used.startswith('-') and formula_used.endswith('%'):
+            deduction = float(formula_used.replace('%', ''))
+            expected_payout = payin_value + deduction  # e.g., -5% means subtract 5
+            expected_payout = math.floor(expected_payout)  # Round down
+            if str(expected_payout) + '%' != record.get('Calculated Payout'):
+                logger.warning(f"Calculation mismatch for record {record['Segment']}: "
+                             f"Expected {expected_payout}%, got {record['Calculated Payout']}")
+                record['Calculated Payout'] = f"{expected_payout}%"
+                record['Remarks'] = (f"{record.get('Remarks', '')} | Calculation corrected: "
+                                   f"Applied {formula_used} to Payin_Value {payin_value}").strip()
+        elif 'of Payin' in formula_used:
+            percentage = float(formula_used.replace('% of Payin', '')) / 100
+            expected_payout = payin_value * percentage
+            expected_payout = math.floor(expected_payout)
+            if str(expected_payout) + '%' != record.get('Calculated Payout'):
+                logger.warning(f"Calculation mismatch for record {record['Segment']}: "
+                             f"Expected {expected_payout}%, got {record['Calculated Payout']}")
+                record['Calculated Payout'] = f"{expected_payout}%"
+                record['Remarks'] = (f"{record.get('Remarks', '')} | Calculation corrected: "
+                                   f"Applied {formula_used} to Payin_Value {payin_value}").strip()
+    except Exception as e:
+        logger.error(f"Validation failed for record {record['Segment']}: {str(e)}")
+        record['Remarks'] = (f"{record.get('Remarks', '')} | Validation error: {str(e)}").strip()
+    
+    return record
+
+
 @app.post("/process-file/")
 async def process_file(
     file: UploadFile = File(...),
@@ -275,14 +287,13 @@ async def process_file(
     try:
         logger.info(f"Processing policy file: {file.filename}, formula file: {formula_file.filename}")
 
-        # ---- Extract text with enhanced intelligence ----
         extracted_text = await extract_text_from_file(file, is_formula=False)
         extracted_formula_text = await extract_text_from_file(formula_file, is_formula=True)
 
         logger.info(f"Extracted text length: {len(extracted_text)}")
         logger.info(f"Extracted formula text length: {len(extracted_formula_text)}")
+        logger.info(f"Formula grid content: {extracted_formula_text[:500]}...")  # Log formula grid for debugging
 
-        # ---- Parse policy data with enhanced segment identification ----
         parse_prompt = f"""
         Analyze the following text, which contains insurance policy details.
         Use your intelligence to identify and extract the data accurately.
@@ -294,7 +305,7 @@ async def process_file(
         Extract into JSON records with these exact fields:
         - "Segment": identify LOB like TW, PVT CAR, CV, BUS, TAXI, MISD and policy type like TP, COMP, SAOD
         - "Location": location information
-        - "Policy Type": policy type information
+        - "Policy Type": policy type information (e.g., TP, COMP, SAOD). If not specified, use "COMP/TP" instead of "N/A"
         - "Payin": convert payout values to percentage format, e.g. 0.5 → 50%, 34 → 34%
         - "Doable District": district information
         - "Remarks": any additional information
@@ -308,8 +319,8 @@ async def process_file(
         - TAXI segments
         - MISD (Miscellaneous) segments
 
-        If you cannot find specific information for any field, use "N/A" or reasonable defaults.
-        Note : If Policy is not defined or told , then consider it as COMP/TP
+        If you cannot find specific information for any field (except Policy Type), use "N/A" or reasonable defaults. For Policy Type, use "COMP/TP" if not specified.
+
         Text to analyze:
         {extracted_text}
         
@@ -319,7 +330,7 @@ async def process_file(
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Extract policy data as JSON array. Always rename 'Payout' → 'Payin'. Normalize all Payin values to percentage format. Use intelligence to identify segments accurately. Return ONLY valid JSON array."},
+                {"role": "system", "content": "Extract policy data as JSON array. Always rename 'Payout' → 'Payin'. Normalize all Payin values to percentage format. Use intelligence to identify segments accurately. For Policy Type, use 'COMP/TP' if not specified instead of 'N/A'. Return ONLY valid JSON array."},
                 {"role": "user", "content": parse_prompt}
             ],
             temperature=0.1
@@ -328,7 +339,6 @@ async def process_file(
         parsed_json = response.choices[0].message.content.strip()
         logger.info(f"Raw OpenAI response: {parsed_json[:500]}...")
         
-        # Clean the JSON response
         cleaned_json = clean_json_response(parsed_json)
         logger.info(f"Cleaned JSON: {cleaned_json[:500]}...")
         
@@ -338,12 +348,10 @@ async def process_file(
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error: {str(e)}")
             logger.error(f"Problematic JSON: {cleaned_json}")
-            
-            # Fallback: create a basic structure
             policy_data = [{
                 "Segment": "Unknown",
                 "Location": "N/A",
-                "Policy Type": "N/A", 
+                "Policy Type": "COMP/TP",
                 "Payin": "0%",
                 "Doable District": "N/A",
                 "Remarks": f"Error parsing data: {str(e)}"
@@ -351,7 +359,6 @@ async def process_file(
 
         logger.info(f"Successfully parsed {len(policy_data)} records")
 
-        # ---- Pre-classify Payin values ----
         for record in policy_data:
             try:
                 payin_val, payin_cat = classify_payin(record.get('Payin', '0%'))
@@ -362,7 +369,6 @@ async def process_file(
                 record['Payin_Value'] = 0.0
                 record['Payin_Category'] = "Payin Below 20%"
 
-        # ---- Apply formulas with enhanced intelligence ----
         formula_prompt = f"""
         You are an intelligent insurance formula calculator with access to:
         
@@ -380,38 +386,34 @@ async def process_file(
         TASK: Use your intelligence to:
         1. Analyze each policy record's Segment and identify the correct LOB (TW, PVT CAR, CV, BUS, TAXI, MISD)
         2. Within the LOB, identify the specific segment (e.g., for BUS: "SCHOOL BUS" vs "STAFF BUS")
-        3. Match the company name ({company_name}) with the formula grid:
-           - Look for exact matches first (DIGIT, BAJAJ, ICICI, SBI, TATA, RELIANCE)
-           - Handle variations (e.g., "Bajaj Allianz" → "BAJAJ", "SBI General" → "SBI")
-           - If no specific company match, use "Rest of Companies" or "All Companies"
+        3. Match the company name EXACTLY with {company_name} first:
+           - If {company_name} is not found in the grid, check for variations (e.g., "Bajaj Allianz" → "BAJAJ", "SBI General" → "SBI")
+           - If no match, use "Rest of Companies" or "All Companies" rules
+           - Log a warning in Remarks if a non-exact match or default rule is used
         4. Match the Payin category correctly:
            - "Payin Below 20%" for payin ≤ 20%
            - "Payin 21% to 30%" for payin 21-30%
            - "Payin 31% to 50%" for payin 31-50%
            - "Payin Above 50%" for payin > 50%
         5. Apply the correct formula based on the grid:
-        These are the examples i am giving you:
-           - "90% of Payin" → multiply Payin_Value by 0.9
-           - "88% of Payin" → multiply Payin_Value by 0.88
-           - "-2%" → subtract 2 from Payin_Value
-           - "-3%" → subtract 3 from Payin_Value
-           - "-4%" → subtract 4 from Payin_Value
-           - "-5%" → subtract 5 from Payin_Value
-           - "Less 2 of Payin" → subtract 2 from Payin_Value
+           - "-X%" → subtract X from Payin_Value (e.g., "-5%" → Payin_Value - 5)
+           - "X% of Payin" → multiply Payin_Value by X/100 (e.g., "90% of Payin" → Payin_Value * 0.9)
+           - "Less X of Payin" → subtract X from Payin_Value (e.g., "Less 2 of Payin" → Payin_Value - 2)
         6. Calculate: Calculated Payout = Apply the formula to Payin_Value
-        7. Round down Calculated Payout to the nearest whole number
+        7. Round down Calculated Payout to the nearest whole number using floor
         8. Format as percentage (e.g., 19 → "19%")
+        9. Verify the calculation: If the formula is "-X%", ensure Calculated Payout = floor(Payin_Value - X). If "X% of Payin", ensure Calculated Payout = floor(Payin_Value * X/100).
 
         SPECIAL ATTENTION:
-        - For BUS policies, clearly distinguish between SCHOOL BUS and STAFF BUS
+        - For BUS policies, distinguish between SCHOOL BUS and STAFF BUS
         - For TAXI, all companies follow the same payin-category-based rules
-        - Pay attention to company-specific rules vs "All Companies" rules
+        - Ensure company name matches {company_name} exactly or log a warning in Remarks
+        - Do NOT make calculation mistakes. Double-check arithmetic.
 
         Return ONLY a valid JSON array with all original fields plus:
         - 'Calculated Payout' (as percentage string)
         - 'Formula Used' (the exact rule applied)
         - 'Rule Explanation' (detailed explanation: LOB → Segment → Company → Payin Category → Rule)
-        Note : Please don't make any calculation mistake while applying formula
         """
         
         formula_response = client.chat.completions.create(
@@ -426,7 +428,6 @@ async def process_file(
         calc_json = formula_response.choices[0].message.content.strip()
         logger.info(f"Raw formula response: {calc_json[:500]}...")
         
-        # Clean and parse formula response
         calc_json_cleaned = clean_json_response(calc_json)
         
         try:
@@ -435,8 +436,6 @@ async def process_file(
         except json.JSONDecodeError as e:
             logger.error(f"Formula JSON decode error: {str(e)}")
             logger.error(f"Problematic formula JSON: {calc_json_cleaned}")
-            
-            # Fallback: use original data with default calculated values
             calculated_data = []
             for record in policy_data:
                 record_copy = record.copy()
@@ -445,9 +444,11 @@ async def process_file(
                 record_copy['Rule Explanation'] = "Formula parsing failed, using original payin value"
                 calculated_data.append(record_copy)
 
+        # Validate and correct calculations
+        calculated_data = [validate_calculated_payout(record) for record in calculated_data]
+
         logger.info(f"Successfully calculated {len(calculated_data)} records")
 
-        # ---- Create Excel ----
         df_calc = pd.DataFrame(calculated_data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
