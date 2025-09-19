@@ -395,6 +395,7 @@ async def process_file(
            - "Payin 21% to 30%" for payin 21-30%
            - "Payin 31% to 50%" for payin 31-50%
            - "Payin Above 50%" for payin > 50%
+       Note : Please check the remarks in the formula grid for special conditions as I have the above for understanding 
         5. Apply the correct formula based on the grid:
            - "-X%" → subtract X from Payin_Value (e.g., "-5%" → Payin_Value - 5)
            - "X% of Payin" → multiply Payin_Value by X/100 (e.g., "90% of Payin" → Payin_Value * 0.9)
