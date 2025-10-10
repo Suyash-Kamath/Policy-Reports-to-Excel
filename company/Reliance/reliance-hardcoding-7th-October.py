@@ -1488,7 +1488,7 @@ def find_matching_rule(lob, segment, insurer, payin_pct):
             rem = cand['REMARKS']
             
             # Check payin-based conditions first
-            if 'Below 20%' in rem and payin_pct < 20:
+            if 'Below 20%' in rem and payin_pct <= 20:
                 matching_rule = cand
                 break
             elif '21% to 30%' in rem and 21 <= payin_pct <= 30:
