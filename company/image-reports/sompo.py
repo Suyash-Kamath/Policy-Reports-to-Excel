@@ -357,465 +357,8 @@ def apply_formula_directly(policy_data, company_name):
     return calculated_data
 
 
-# def process_files(policy_file_bytes, policy_filename, policy_content_type, company_name):
-#     """Main processing function with enhanced error handling"""
-#     try:
-#         st.info("🔍 Extracting text from policy image...")
-        
-#         extracted_text = extract_text_from_file(policy_file_bytes, policy_filename, policy_content_type)
-#         logger.info(f"Extracted text length: {len(extracted_text)}")
-
-#         if not extracted_text.strip():
-#             logger.error("No text extracted from the image")
-#             st.error("❌ No text could be extracted. Please ensure the image is clear and contains readable text.")
-#             return {
-#                 "extracted_text": "",
-#                 "parsed_data": [],
-#                 "calculated_data": [],
-#                 "excel_data": None,
-#                 "df_calc": pd.DataFrame()
-#             }
-
-#         st.success(f"✅ Text extracted successfully! Length: {len(extracted_text)} chars")
-
-#         st.info("🧠 Parsing policy data with AI...")
-        
-#         prompt_parse = f"""
-# Analyze this insurance policy text and extract structured data.
-# CRITICAL INSTRUCTIONS:
-# 1. ALWAYS return a valid JSON ARRAY (list) of objects, even if there's only one record
-# 2. Each object must have these EXACT field names:
-#    - "Segment": LOB + policy type (e.g., "TW TP", "PVT CAR COMP", "CV upto 2.5 Tn")
-#    - "Location": location/region information (use "N/A" if not found)
-#    - "Policy Type": policy type details (use "COMP/TP" if not specified)
-#    - "Payin": percentage value (convert decimals: 0.625 → 62.5%, or keep as is: 34%)
-#    - "Doable District": district info (use "N/A" if not found)
-#    - "Remarks": additional info including vehicle makes, age, transaction type, validity
-
-# 3. For Segment field:
-#    - Identify LOB: TW, PVT CAR, CV, BUS, TAXI, MISD
-#    - Add policy type: TP, COMP, SAOD, etc.
-#    - For CV: preserve tonnage (e.g., "CV upto 2.5 Tn")
-
-# 4. For Payin field:
-#    - If you see decimals like 0.625, convert to 62.5%
-#    - If you see whole numbers like 34, add % to make 34%
-#    - If you see percentages, keep them as is
-#    - Use the value from the "PO" column or any column that indicates payout/payin
-#    - Do not use values from "Discount" column for Payin
-
-#   5. For Remarks field - extract ALL additional info:
-#    - Vehicle makes (Tata, Maruti, etc.) → "Vehicle Makes: Tata, Maruti"
-#    - Age info (>5 years, etc.) → "Age: >5 years"
-#    - Transaction type (New/Old/Renewal) → "Transaction: New"
-#    - Validity dates → "Validity till: [date]"
-#    - Decline RTO information (e.g., "Decline RTO: Dhar, Jhabua")
-#    - Combine with semicolons: "Vehicle Makes: Tata; Age: >5 years; Transaction: New"
-#  IGNORE these columns completely - DO NOT extract them:
-#    - Discount
-#    - CD1
-#    - Any column containing "discount" or "cd1" 
-#    - These are not needed for our analysis
-
-   
-# NOTE:
-# - Taxi PCV comes under the category of Taxi
-# - Multiple columns are there which has payouts based on either policy type or fuel type , so consider that as payin
-# - PCV < 6 STR comes under Taxi
-# -PC means Private Car and STP = TP
-# - Kali Pilli or Kaali Pilli means Taxi and it comes under Taxi
-# - If in SGEMENT OF Private Car , SAOD mentinoned then it comes into PVT CAR COMP + SAOD segment , also same for COMP
-# Here is the training Data:
-# I am training you
-
-# Text to analyze:
-# {extracted_text}
-# """
-       
-#         try:
-#             response = client.chat.completions.create(
-#                 model="gpt-4o-mini",
-#                 messages=[
-#                     {
-#                         "role": "system", 
-#                         "content": "You are a data extraction expert. Extract policy data as a JSON array. Convert all Payin values to percentage format. Always return valid JSON array with complete field names. Extract all additional information for remarks."
-#                     },
-#                     {"role": "user", "content": prompt_parse}
-#                 ],
-#                 temperature=0.1,
-#                 max_tokens=16000
-#             )
-            
-#             parsed_json = response.choices[0].message.content.strip()
-#             logger.info(f"Raw parsing response: {parsed_json[:500]}...")
-            
-#             cleaned_json = clean_json_response(parsed_json)
-#             logger.info(f"Cleaned JSON: {cleaned_json[:500]}...")
-            
-#             try:
-#                 policy_data = json.loads(cleaned_json)
-#                 policy_data = ensure_list_format(policy_data)
-                
-#                 if not policy_data or len(policy_data) == 0:
-#                     raise ValueError("Parsed data is empty")
-                    
-#             except json.JSONDecodeError as e:
-#                 logger.error(f"JSON decode error: {str(e)} with cleaned JSON: {cleaned_json}")
-#                 st.warning("⚠️ AI response was not valid JSON. Creating fallback structure...")
-#                 policy_data = [{
-#                     "Segment": "Unknown",
-#                     "Location": "N/A",
-#                     "Policy Type": "N/A", 
-#                     "Payin": "0%",
-#                     "Doable District": "N/A",
-#                     "Remarks": f"Failed to parse - please check image quality. Extract manually from: {extracted_text[:200]}"
-#                 }]
-        
-#         except Exception as e:
-#             logger.error(f"Error in AI parsing: {str(e)} with raw response: {parsed_json[:500]}...")
-#             st.warning("⚠️ AI parsing failed. Creating fallback structure...")
-#             policy_data = [{
-#                 "Segment": "Unknown",
-#                 "Location": "N/A",
-#                 "Policy Type": "N/A",
-#                 "Payin": "0%",
-#                 "Doable District": "N/A",
-#                 "Remarks": f"Parsing error: {str(e)}"
-#             }]
-
-#         st.success(f"✅ Successfully parsed {len(policy_data)} policy records")
-
-#         for record in policy_data:
-#             try:
-#                 if 'Discount' in record:
-#                     del record['Discount']
-#                 payin_val, payin_cat = classify_payin(record.get('Payin', '0%'))
-#                 record['Payin_Value'] = payin_val
-#                 record['Payin_Category'] = payin_cat
-#             except Exception as e:
-#                 logger.warning(f"Error classifying payin: {e}")
-#                 record['Payin_Value'] = 0.0
-#                 record['Payin_Category'] = "Payin Below 20%"
-
-#         st.info("🧮 Applying formulas and calculating payouts...")
-#         calculated_data = apply_formula_directly(policy_data, company_name)
-        
-#         if not calculated_data or len(calculated_data) == 0:
-#             st.error("❌ No data after formula application")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": [],
-#                 "excel_data": None,
-#                 "df_calc": pd.DataFrame()
-#             }
-
-#         st.success(f"✅ Successfully calculated {len(calculated_data)} records")
-
-#         st.info("📊 Creating Excel file...")
-        
-#         df_calc = pd.DataFrame(calculated_data)
-        
-#         if df_calc.empty:
-#             st.error("❌ DataFrame is empty")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": calculated_data,
-#                 "excel_data": None,
-#                 "df_calc": df_calc
-#             }
-
-#         output = BytesIO()
-#         try:
-#             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-#                 df_calc.to_excel(writer, sheet_name='Policy Data', startrow=2, index=False)
-#                 worksheet = writer.sheets['Policy Data']
-
-#                 headers = list(df_calc.columns)
-#                 for col_num, value in enumerate(headers, 1):
-#                     cell = worksheet.cell(row=3, column=col_num, value=value)
-#                     cell.font = cell.font.copy(bold=True)
-
-#                 if len(headers) > 1:
-#                     company_cell = worksheet.cell(row=1, column=1, value=company_name)
-#                     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-#                     company_cell.font = company_cell.font.copy(bold=True, size=14)
-#                     company_cell.alignment = company_cell.alignment.copy(horizontal='center')
-
-#                     title_cell = worksheet.cell(row=2, column=1, value='Policy Data with Payin and Calculated Payouts')
-#                     worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
-#                     title_cell.font = title_cell.font.copy(bold=True, size=12)
-#                     title_cell.alignment = title_cell.alignment.copy(horizontal='center')
-#                 else:
-#                     worksheet.cell(row=1, column=1, value=company_name)
-#                     worksheet.cell(row=2, column=1, value='Policy Data with Payin and Calculated Payouts')
-
-#         except Exception as e:
-#             logger.error(f"Error creating Excel file: {str(e)}")
-#             st.error(f"❌ Error creating Excel: {str(e)}")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": calculated_data,
-#                 "excel_data": None,
-#                 "df_calc": df_calc
-#             }
-
-#         output.seek(0)
-#         excel_data = output.read()
-
-#         return {
-#             "extracted_text": extracted_text,
-#             "parsed_data": policy_data,
-#             "calculated_data": calculated_data,
-#             "excel_data": excel_data,
-#             "df_calc": df_calc
-#         }
-
-#     except Exception as e:
-#         logger.error(f"Unexpected error in process_files: {str(e)}", exc_info=True)
-#         st.error(f"❌ Processing error: {str(e)}")
-#         return {
-#             "extracted_text": "",
-#             "parsed_data": [],
-#             "calculated_data": [],
-#             "excel_data": None,
-#             "df_calc": pd.DataFrame()
-#         }
-
-# def process_files(policy_file_bytes, policy_filename, policy_content_type, company_name):
-#     """Main processing function with enhanced error handling"""
-#     try:
-#         st.info("🔍 Extracting text from policy image...")
-        
-#         extracted_text = extract_text_from_file(policy_file_bytes, policy_filename, policy_content_type)
-#         logger.info(f"Extracted text length: {len(extracted_text)}")
-
-#         if not extracted_text.strip():
-#             logger.error("No text extracted from the image")
-#             st.error("❌ No text could be extracted. Please ensure the image is clear and contains readable text.")
-#             return {
-#                 "extracted_text": "",
-#                 "parsed_data": [],
-#                 "calculated_data": [],
-#                 "excel_data": None,
-#                 "df_calc": pd.DataFrame()
-#             }
-
-#         st.success(f"✅ Text extracted successfully! Length: {len(extracted_text)} chars")
-
-#         st.info("🧠 Parsing policy data with AI...")
-        
-#         prompt_parse = f"""
-# Analyze this insurance policy text and extract structured data.
-# CRITICAL INSTRUCTIONS:
-# 1. ALWAYS return a valid JSON ARRAY (list) of objects, even if there's only one record
-# 2. Each object must have these EXACT field names:
-#    - "Segment": LOB + policy type (e.g., "TW TP", "PVT CAR COMP", "CV upto 2.5 Tn")
-#    - "Location": location/region information (use "N/A" if not found)
-#    - "Policy Type": policy type details (use "COMP/TP" if not specified)
-#    - "Payin": percentage value (convert decimals: 0.625 → 62.5%, or keep as is: 34%)
-#    - "Doable District": district info (use "N/A" if not found)
-#    - "Remarks": additional info including vehicle makes, age, transaction type, validity
-
-# 3. For Segment field:
-#    - Identify LOB: TW, PVT CAR, CV, BUS, TAXI, MISD
-#    - Add policy type: TP, COMP, SAOD, etc.
-#    - For CV: preserve tonnage (e.g., "CV upto 2.5 Tn")
-
-# 4. For Payin field:
-#    - If you see decimals like 0.625, convert to 62.5%
-#    - If you see whole numbers like 34, add % to make 34%
-#    - If you see percentages, keep them as is
-#    - Use the value from the "PO" column or any column that indicates payout/payin
-#    - Do not use values from "Discount" column for Payin
-
-# 5. For Remarks field - extract ALL additional info:
-#    - Vehicle makes (Tata, Maruti, etc.) → "Vehicle Makes: Tata, Maruti"
-#    - Age info (>5 years, etc.) → "Age: >5 years"
-#    - Transaction type (New/Old/Renewal) → "Transaction: New"
-#    - Validity dates → "Validity till: [date]"
-#    - Decline RTO information (e.g., "Decline RTO: Dhar, Jhabua")
-#    - Combine with semicolons: "Vehicle Makes: Tata; Age: >5 years; Transaction: New"
-#  IGNORE these columns completely - DO NOT extract them:
-#    - Discount
-#    - CD1
-#    - Any column containing "discount" or "cd1" 
-#    - These are not needed for our analysis
-
-# NOTE:
-# - Taxi PCV comes under the category of Taxi
-# - Multiple columns are there which has payouts based on either policy type or fuel type , so consider that as payin
-# - PCV < 6 STR comes under Taxi
-# - PC means Private Car and STP = TP
-# - Kali Pilli or Kaali Pilli means Taxi and it comes under Taxi
-# - If in SEGMENT of Private Car, SAOD mentioned then it comes into PVT CAR COMP + SAOD segment, also same for COMP
-# Here is the training Data:
-# I am training you
-
-# Text to analyze:
-# {extracted_text}
-# """
-       
-#         try:
-#             # Initialize Grok client (assuming GROK_API_KEY is set in environment)
-#             from xai_sdk  import Grok  # Adjust import based on your Grok API library
-#             client = Grok(api_key=os.getenv("GROK_API_KEY"))
-            
-#             response = client.chat.completions.create(
-#                 model="grok",  # Use the appropriate Grok model name (e.g., "grok" or "grok-advanced")
-#                 messages=[
-#                     {
-#                         "role": "system",
-#                         "content": "You are a data extraction expert. Extract policy data as a JSON array. Convert all Payin values to percentage format. Always return valid JSON array with complete field names. Extract all additional information for remarks."
-#                     },
-#                     {"role": "user", "content": prompt_parse}
-#                 ],
-#                 temperature=0.1,
-#                 max_tokens=16000
-#             )
-            
-#             parsed_json = response.choices[0].message.content.strip()
-#             logger.info(f"Raw parsing response: {parsed_json[:500]}...")
-            
-#             cleaned_json = clean_json_response(parsed_json)
-#             logger.info(f"Cleaned JSON: {cleaned_json[:500]}...")
-            
-#             try:
-#                 policy_data = json.loads(cleaned_json)
-#                 policy_data = ensure_list_format(policy_data)
-                
-#                 if not policy_data or len(policy_data) == 0:
-#                     raise ValueError("Parsed data is empty")
-                    
-#             except json.JSONDecodeError as e:
-#                 logger.error(f"JSON decode error: {str(e)} with cleaned JSON: {cleaned_json}")
-#                 st.warning("⚠️ AI response was not valid JSON. Creating fallback structure...")
-#                 policy_data = [{
-#                     "Segment": "Unknown",
-#                     "Location": "N/A",
-#                     "Policy Type": "N/A",
-#                     "Payin": "0%",
-#                     "Doable District": "N/A",
-#                     "Remarks": f"Failed to parse - please check image quality. Extract manually from: {extracted_text[:200]}"
-#                 }]
-        
-#         except Exception as e:
-#             logger.error(f"Error in AI parsing: {str(e)} with raw response: {parsed_json[:500]}...")
-#             st.warning("⚠️ AI parsing failed. Creating fallback structure...")
-#             policy_data = [{
-#                 "Segment": "Unknown",
-#                 "Location": "N/A",
-#                 "Policy Type": "N/A",
-#                 "Payin": "0%",
-#                 "Doable District": "N/A",
-#                 "Remarks": f"Parsing error: {str(e)}"
-#             }]
-
-#         st.success(f"✅ Successfully parsed {len(policy_data)} policy records")
-
-#         for record in policy_data:
-#             try:
-#                 if 'Discount' in record:
-#                     del record['Discount']
-#                 payin_val, payin_cat = classify_payin(record.get('Payin', '0%'))
-#                 record['Payin_Value'] = payin_val
-#                 record['Payin_Category'] = payin_cat
-#             except Exception as e:
-#                 logger.warning(f"Error classifying payin: {e}")
-#                 record['Payin_Value'] = 0.0
-#                 record['Payin_Category'] = "Payin Below 20%"
-
-#         st.info("🧮 Applying formulas and calculating payouts...")
-#         calculated_data = apply_formula_directly(policy_data, company_name)
-        
-#         if not calculated_data or len(calculated_data) == 0:
-#             st.error("❌ No data after formula application")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": [],
-#                 "excel_data": None,
-#                 "df_calc": pd.DataFrame()
-#             }
-
-#         st.success(f"✅ Successfully calculated {len(calculated_data)} records")
-
-#         st.info("📊 Creating Excel file...")
-        
-#         df_calc = pd.DataFrame(calculated_data)
-        
-#         if df_calc.empty:
-#             st.error("❌ DataFrame is empty")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": calculated_data,
-#                 "excel_data": None,
-#                 "df_calc": df_calc
-#             }
-
-#         output = BytesIO()
-#         try:
-#             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-#                 df_calc.to_excel(writer, sheet_name='Policy Data', startrow=2, index=False)
-#                 worksheet = writer.sheets['Policy Data']
-
-#                 headers = list(df_calc.columns)
-#                 for col_num, value in enumerate(headers, 1):
-#                     cell = worksheet.cell(row=3, column=col_num, value=value)
-#                     cell.font = cell.font.copy(bold=True)
-
-#                 if len(headers) > 1:
-#                     company_cell = worksheet.cell(row=1, column=1, value=company_name)
-#                     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-#                     company_cell.font = company_cell.font.copy(bold=True, size=14)
-#                     company_cell.alignment = company_cell.alignment.copy(horizontal='center')
-
-#                     title_cell = worksheet.cell(row=2, column=1, value='Policy Data with Payin and Calculated Payouts')
-#                     worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
-#                     title_cell.font = title_cell.font.copy(bold=True, size=12)
-#                     title_cell.alignment = title_cell.alignment.copy(horizontal='center')
-#                 else:
-#                     worksheet.cell(row=1, column=1, value=company_name)
-#                     worksheet.cell(row=2, column=1, value='Policy Data with Payin and Calculated Payouts')
-
-#         except Exception as e:
-#             logger.error(f"Error creating Excel file: {str(e)}")
-#             st.error(f"❌ Error creating Excel: {str(e)}")
-#             return {
-#                 "extracted_text": extracted_text,
-#                 "parsed_data": policy_data,
-#                 "calculated_data": calculated_data,
-#                 "excel_data": None,
-#                 "df_calc": df_calc
-#             }
-
-#         output.seek(0)
-#         excel_data = output.read()
-
-#         return {
-#             "extracted_text": extracted_text,
-#             "parsed_data": policy_data,
-#             "calculated_data": calculated_data,
-#             "excel_data": excel_data,
-#             "df_calc": df_calc
-#         }
-
-#     except Exception as e:
-#         logger.error(f"Unexpected error in process_files: {str(e)}", exc_info=True)
-#         st.error(f"❌ Processing error: {str(e)}")
-#         return {
-#             "extracted_text": "",
-#             "parsed_data": [],
-#             "calculated_data": [],
-#             "excel_data": None,
-#             "df_calc": pd.DataFrame()
-#         }
-
 def process_files(policy_file_bytes, policy_filename, policy_content_type, company_name):
-    """Main processing function with Grok API integration"""
+    """Main processing function with enhanced error handling"""
     try:
         st.info("🔍 Extracting text from policy image...")
         
@@ -835,7 +378,7 @@ def process_files(policy_file_bytes, policy_filename, policy_content_type, compa
 
         st.success(f"✅ Text extracted successfully! Length: {len(extracted_text)} chars")
 
-        st.info("🧠 Parsing policy data with Grok AI...")
+        st.info("🧠 Parsing policy data with AI...")
         
         prompt_parse = f"""
 Analyze this insurance policy text and extract structured data.
@@ -861,74 +404,53 @@ CRITICAL INSTRUCTIONS:
    - Use the value from the "PO" column or any column that indicates payout/payin
    - Do not use values from "Discount" column for Payin
 
-5. For Remarks field - extract ALL additional info:
+  5. For Remarks field - extract ALL additional info:
    - Vehicle makes (Tata, Maruti, etc.) → "Vehicle Makes: Tata, Maruti"
    - Age info (>5 years, etc.) → "Age: >5 years"
    - Transaction type (New/Old/Renewal) → "Transaction: New"
    - Validity dates → "Validity till: [date]"
    - Decline RTO information (e.g., "Decline RTO: Dhar, Jhabua")
    - Combine with semicolons: "Vehicle Makes: Tata; Age: >5 years; Transaction: New"
-
-IGNORE these columns completely - DO NOT extract them:
+ IGNORE these columns completely - DO NOT extract them:
    - Discount
    - CD1
    - Any column containing "discount" or "cd1" 
    - These are not needed for our analysis
 
+   
 NOTE:
 - Taxi PCV comes under the category of Taxi
-- Multiple columns are there which has payouts based on either policy type or fuel type, so consider that as payin
+- Multiple columns are there which has payouts based on either policy type or fuel type , so consider that as payin
 - PCV < 6 STR comes under Taxi
-- PC means Private Car and STP = TP
+-PC means Private Car and STP = TP
 - Kali Pilli or Kaali Pilli means Taxi and it comes under Taxi
-- If in SEGMENT of Private Car, SAOD mentioned then it comes into PVT CAR COMP + SAOD segment, also same for COMP
-
-For regional grids with multiple states/GVW categories:
-- Create ONE record per state per GVW category
-- Extract ALL states and ALL GVW rows
-- Do not skip any data
+- If in SGEMENT OF Private Car , SAOD mentinoned then it comes into PVT CAR COMP + SAOD segment , also same for COMP
+Here is the training Data:
+I am training you
 
 Text to analyze:
 {extracted_text}
 """
        
         try:
-            # Grok API uses OpenAI-compatible interface
-            # Get Grok API key from environment
-            GROK_API_KEY = os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY")
-            
-            if not GROK_API_KEY:
-                st.error("❌ XAI_API_KEY or GROK_API_KEY not found in environment variables")
-                raise ValueError("Grok API key not configured")
-            
-            # Initialize OpenAI client pointing to xAI's API endpoint
-            from openai import OpenAI
-            
-            grok_client = OpenAI(
-                api_key=GROK_API_KEY,
-                base_url="https://api.x.ai/v1"  # xAI's API endpoint
-            )
-            
-            response = grok_client.chat.completions.create(
-                model="grok-beta",  # or "grok-2-latest" depending on your access
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
                 messages=[
                     {
-                        "role": "system",
-                        "content": "You are a data extraction expert specializing in insurance policy documents. Extract policy data as a complete JSON array. Convert all Payin values to percentage format. Always return valid JSON array with complete field names. Extract all additional information for remarks. For large tables, extract EVERY row and EVERY state/region - do not truncate or skip data."
+                        "role": "system", 
+                        "content": "You are a data extraction expert. Extract policy data as a JSON array. Convert all Payin values to percentage format. Always return valid JSON array with complete field names. Extract all additional information for remarks."
                     },
                     {"role": "user", "content": prompt_parse}
                 ],
-                temperature=0.0,  # Use 0.0 for deterministic extraction
-                max_tokens=131072,  # Grok supports up to 131K output tokens
-                stream=False
+                temperature=0.1,
+                max_tokens=16000
             )
             
             parsed_json = response.choices[0].message.content.strip()
-            logger.info(f"Raw Grok response length: {len(parsed_json)} chars")
-            logger.info(f"Raw parsing response preview: {parsed_json[:500]}...")
+            logger.info(f"Raw parsing response: {parsed_json[:500]}...")
             
             cleaned_json = clean_json_response(parsed_json)
-            logger.info(f"Cleaned JSON preview: {cleaned_json[:500]}...")
+            logger.info(f"Cleaned JSON: {cleaned_json[:500]}...")
             
             try:
                 policy_data = json.loads(cleaned_json)
@@ -936,25 +458,22 @@ Text to analyze:
                 
                 if not policy_data or len(policy_data) == 0:
                     raise ValueError("Parsed data is empty")
-                
-                logger.info(f"Successfully parsed {len(policy_data)} records with Grok")
                     
             except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {str(e)}")
-                logger.error(f"Problematic JSON: {cleaned_json[:1000]}")
-                st.warning("⚠️ Grok response was not valid JSON. Creating fallback structure...")
+                logger.error(f"JSON decode error: {str(e)} with cleaned JSON: {cleaned_json}")
+                st.warning("⚠️ AI response was not valid JSON. Creating fallback structure...")
                 policy_data = [{
                     "Segment": "Unknown",
                     "Location": "N/A",
-                    "Policy Type": "N/A",
+                    "Policy Type": "N/A", 
                     "Payin": "0%",
                     "Doable District": "N/A",
                     "Remarks": f"Failed to parse - please check image quality. Extract manually from: {extracted_text[:200]}"
                 }]
         
         except Exception as e:
-            logger.error(f"Error in Grok AI parsing: {str(e)}", exc_info=True)
-            st.warning(f"⚠️ Grok API error: {str(e)}. Creating fallback structure...")
+            logger.error(f"Error in AI parsing: {str(e)} with raw response: {parsed_json[:500]}...")
+            st.warning("⚠️ AI parsing failed. Creating fallback structure...")
             policy_data = [{
                 "Segment": "Unknown",
                 "Location": "N/A",
@@ -966,14 +485,10 @@ Text to analyze:
 
         st.success(f"✅ Successfully parsed {len(policy_data)} policy records")
 
-        # Clean up and classify payin
         for record in policy_data:
             try:
-                # Remove discount column if present
                 if 'Discount' in record:
                     del record['Discount']
-                
-                # Classify payin
                 payin_val, payin_cat = classify_payin(record.get('Payin', '0%'))
                 record['Payin_Value'] = payin_val
                 record['Payin_Category'] = payin_cat
@@ -1070,24 +585,7 @@ Text to analyze:
         }
 
 
-# Add this at the top of your file with other imports
-"""
-To use Grok API, you need to:
 
-1. Get API key from: https://x.ai/api
-2. Set environment variable:
-   - XAI_API_KEY=your_api_key_here
-   OR
-   - GROK_API_KEY=your_api_key_here
-
-3. Install OpenAI library (Grok uses OpenAI-compatible API):
-   pip install openai
-
-Available Grok models:
-- grok-beta (general use)
-- grok-2-latest (most advanced)
-- grok-vision-beta (for vision tasks)
-"""
 def main():
     st.set_page_config(
         page_title="Insurance Policy Processing", 
